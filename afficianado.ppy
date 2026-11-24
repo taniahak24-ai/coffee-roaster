@@ -1,0 +1,85 @@
+import streamlit as st
+import pandas as pd
+
+st.set_page_config(page_title="Afficionado Coffee Roasters", layout="wide")
+
+st.title("☕ Afficionado Coffee Roasters Dashboard")
+st.write("Product Optimization & Revenue Contribution Analysis")
+
+# ---------- Step 1: Read the data ----------
+# Change this name to your own file name
+FILE_NAME = "coffee_data.xlsx"
+
+@st.cache_data
+def load_data():
+    if FILE_NAME.endswith(".csv"):
+        df = pd.read_csv(FILE_NAME)
+    else:
+        df = pd.read_excel(FILE_NAME)
+    # make column names simple: small letters, no spaces
+    df.columns = df.columns.str.strip().str.lower().str.replace(" ", "_")
+    return df
+
+try:
+    df = load_data()
+except Exception as e:
+    st.error("Data file not found. Please check the file name.")
+    st.stop()
+
+# ---------- Step 2: Make the Revenue column ----------
+if "revenue" not in df.columns:
+    df["revenue"] = df["transaction_qty"] * df["unit_price"]
+
+# ---------- Step 3: Filters on the left side ----------
+st.sidebar.header("Filters")
+
+if "store_location" in df.columns:
+    stores = st.sidebar.multiselect(
+        "Store Location",
+        df["store_location"].unique(),
+        default=df["store_location"].unique(),
+    )
+    df = df[df["store_location"].isin(stores)]
+
+if "product_category" in df.columns:
+    cats = st.sidebar.multiselect(
+        "Product Category",
+        df["product_category"].unique(),
+        default=df["product_category"].unique(),
+    )
+    df = df[df["product_category"].isin(cats)]
+
+# ---------- Step 4: Big numbers ----------
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Revenue", f"${df['revenue'].sum():,.0f}")
+col2.metric("Total Items Sold", f"{df['transaction_qty'].sum():,.0f}")
+col3.metric("Total Orders", f"{len(df):,}")
+
+st.divider()
+
+# ---------- Step 5: Charts ----------
+left, right = st.columns(2)
+
+with left:
+    st.subheader("Revenue by Product Category")
+    cat_rev = df.groupby("product_category")["revenue"].sum().sort_values(ascending=False)
+    st.bar_chart(cat_rev)
+
+with right:
+    st.subheader("Top 10 Products by Revenue")
+    top10 = df.groupby("product_type")["revenue"].sum().sort_values(ascending=False).head(10)
+    st.bar_chart(top10)
+
+st.subheader("Revenue Contribution (%) by Product Category")
+contrib = (cat_rev / cat_rev.sum() * 100).round(2)
+st.dataframe(contrib.rename("Contribution %"))
+
+if "transaction_date" in df.columns:
+    st.subheader("Revenue Over Time")
+    df["transaction_date"] = pd.to_datetime(df["transaction_date"], errors="coerce")
+    daily = df.groupby("transaction_date")["revenue"].sum()
+    st.line_chart(daily)
+
+# ---------- Step 6: Show the data ----------
+st.subheader("Data Preview")
+st.dataframe(df.head(100))
